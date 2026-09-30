@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrenador de Lectura a Primera Vista — v5</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg1:#1e3c72;--bg2:#2a5298;--green:#4ade80;--red:#f87171;
+  --yellow:#facc15;--orange:#f59e0b;--ink:#333;--paypal:#0070ba;--paypal-hover:#005ea6
+}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:linear-gradient(135deg,var(--bg1),var(--bg2));
+  min-height:100vh;color:#fff;padding:20px;display:flex;flex-direction:column;
+  align-items:center
+}
+h1{margin-bottom:6px;font-size:clamp(1.5rem,4vw,2rem);text-align:center}
+.subtitle{text-align:center;opacity:.82;margin-bottom:18px;font-size:.92rem}
+.hud{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;justify-content:center}
+.stat{
+  background:rgba(255,255,255,.14);padding:9px 15px;border-radius:12px;
+  backdrop-filter:blur(10px);text-align:center;min-width:92px
+}
+.stat-label{font-size:.68rem;opacity:.8;text-transform:uppercase}
+.stat-value{font-size:1.35rem;font-weight:700;margin-top:3px}
+.bar{width:min(700px,100%);height:7px;background:rgba(255,255,255,.18);border-radius:5px;overflow:hidden}
+.progress-bar{margin-bottom:7px}.timer-bar{margin-bottom:10px}
+.progress-fill{height:100%;background:var(--green);width:0%;transition:width .25s}
+.timer-fill{height:100%;background:linear-gradient(to right,var(--green),var(--yellow),var(--red));width:100%}
+.progress-text{text-align:center;font-size:.82rem;opacity:.9;margin-bottom:8px}
+.staff-container{
+  background:#fff;border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+  margin-bottom:12px;width:min(340px,100%)
+}
+#staff{display:block;width:100%;height:auto}
+.feedback{text-align:center;font-size:1.15rem;min-height:31px;margin-bottom:10px;font-weight:700}
+.feedback.correct{color:var(--green)}.feedback.wrong{color:var(--red)}
+.piano{
+  position:relative;height:145px;width:min(900px,100%);margin:0 auto;user-select:none;
+  touch-action:none
+}
+.white-key,.black-key{
+  position:absolute;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;
+  user-select:none;transition:background .08s,transform .05s
+}
+.white-key{
+  background:linear-gradient(to bottom,#fff,#eee);border:1px solid #333;border-radius:0 0 6px 6px;
+  padding-bottom:7px;font-size:.55rem;font-weight:700;color:#444;height:100%;z-index:1
+}
+.white-key:hover{background:#e7e7e7}.white-key.pressed,.black-key.pressed{background:var(--green)!important}
+.white-key.wrong-press,.black-key.wrong-press{background:var(--red)!important}
+.black-key{
+  background:linear-gradient(to bottom,#333,#000);border:1px solid #000;border-radius:0 0 4px 4px;
+  z-index:2;padding-bottom:5px;font-size:.46rem;color:#fff;height:60%
+}
+.black-key:hover{background:#444}
+.controls{margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:900px}
+.btn{
+  background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3);
+  padding:9px 14px;border-radius:8px;cursor:pointer;font-size:.86rem;transition:.15s;text-decoration:none;display:inline-flex;align-items:center;justify-content:center
+}
+.btn:hover{background:rgba(255,255,255,.3)}.btn.active{background:var(--green);color:#000;border-color:var(--green)}
+.btn.pause{background:var(--orange);color:#000;border-color:var(--orange)}
+.btn.primary{background:var(--green);color:#000;border-color:var(--green);font-weight:700}
+.btn.donate{
+  background:linear-gradient(to bottom, #ffdd40, #facc15);
+  color:#111;
+  font-weight:700;
+  border-color:#eab308;
+  box-shadow:0 4px 12px rgba(250,204,21,.3);
+  animation: pulse-donate 2s infinite;
+}
+.btn.donate:hover{
+  background:linear-gradient(to bottom, #facc15, #eab308);
+  transform: translateY(-1px);
+}
+@keyframes pulse-donate {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); box-shadow:0 4px 16px rgba(250,204,21,.5); }
+  100% { transform: scale(1); }
+}
+.btn:disabled{opacity:.45;cursor:not-allowed;animation:none}
+.hint{margin-top:13px;font-size:.78rem;opacity:.72;text-align:center;max-width:760px;line-height:1.5}
+kbd{background:rgba(0,0,0,.28);padding:2px 5px;border-radius:4px;font-family:inherit}
+.results-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.86);backdrop-filter:blur(10px);
+  display:none;align-items:center;justify-content:center;z-index:100;padding:18px;overflow:auto
+}
+.results-overlay.show{display:flex}
+.results-card{
+  background:linear-gradient(135deg,var(--bg1),var(--bg2));border-radius:20px;padding:30px;
+  max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center
+}
+.results-title{font-size:1.8rem;margin-bottom:6px}.results-emoji{font-size:3.5rem}
+.results-grade{font-size:1rem;margin-bottom:18px;opacity:.9}
+.results-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:17px}
+.result-item{background:rgba(255,255,255,.13);padding:12px;border-radius:12px}
+.result-item-label{font-size:.68rem;opacity:.8;text-transform:uppercase}
+.result-item-value{font-size:1.55rem;font-weight:700;margin-top:3px}
+.result-item-value.big{font-size:2.2rem;color:var(--green)}
+.weak-notes{text-align:left;background:rgba(255,255,255,.1);padding:13px;border-radius:12px;margin-bottom:18px}
+.weak-notes h3{font-size:.9rem;margin-bottom:7px}.weak-notes p{font-size:.82rem;opacity:.9;line-height:1.5}
+.results-actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+.stats-note{font-size:.74rem;opacity:.65;margin-top:12px}
+@media(max-width:600px){
+  body{padding:12px}.staff-container{padding:16px}.piano{height:125px}
+  .white-key{font-size:.42rem}.black-key{font-size:0}
+  .stat{min-width:78px;padding:8px 10px}.stat-value{font-size:1.15rem}
+}
+</style>
+</head>
+<body>
+
+<h1>🎹 Entrenador de Lectura</h1>
+<p class="subtitle">Lee la nota del pentagrama y tócala en el piano</p>
+
+<div class="hud">
+  <div class="stat"><div class="stat-label">Aciertos</div><div class="stat-value" id="score">0</div></div>
+  <div class="stat"><div class="stat-label">Racha</div><div class="stat-value" id="streak">0</div></div>
+  <div class="stat"><div class="stat-label">Mejor racha</div><div class="stat-value" id="best">0</div></div>
+  <div class="stat"><div class="stat-label">Precisión</div><div class="stat-value" id="accuracy">100%</div></div>
+  <div class="stat"><div class="stat-label">Puntos</div><div class="stat-value" id="points">0</div></div>
+</div>
+
+<div class="bar progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+<div class="progress-text" id="progressText">Pulsa «Iniciar» para comenzar</div>
+<div class="bar timer-bar"><div class="timer-fill" id="timerFill"></div></div>
+
+<div class="staff-container">
+  <svg id="staff" viewBox="0 0 280 160" aria-label="Pentagrama"></svg>
+</div>
+
+<div class="feedback" id="feedback">Listo para practicar</div>
+<div class="piano" id="piano"></div>
+
+<div class="controls">
+  <button class="btn active" data-clef="treble">Clave de Sol</button>
+  <button class="btn" data-clef="bass">Clave de Fa</button>
+  <button class="btn active" data-diff="easy">Fácil</button>
+  <button class="btn" data-diff="medium">Medio</button>
+  <button class="btn" data-diff="hard">Difícil</button>
+  <button class="btn" data-rounds="10">10 notas</button>
+  <button class="btn active" data-rounds="20">20 notas</button>
+  <button class="btn" data-rounds="30">30 notas</button>
+  <button class="btn primary" id="startBtn">▶ Iniciar</button>
+  <button class="btn pause" id="pauseBtn" disabled>⏸ Pausar</button>
+  <button class="btn" id="resetBtn">↺ Reiniciar</button>
+  <!-- Botón de donación conectado a tu PayPal -->
+  <a class="btn donate" href="https://paypal.me/Donacion472" target="_blank" rel="noopener noreferrer">☕ Donar con PayPal</a>
+</div>
+<p>Si te gusta el entrenador, estaré agradecido por tu donación.</p>
+<p class="hint">
+  Ratón/táctil o teclado: <kbd>A W S E D F T G Y H U J K</kbd>.
+  Las teclas negras usan W/E/T/Y/U. El programa evita repetir la misma nota consecutivamente.
+</p>
+
+<div class="results-overlay" id="resultsOverlay">
+  <div class="results-card">
+    <div class="results-emoji" id="resultsEmoji">🎉</div>
+    <div class="results-title" id="resultsTitle">¡Ronda completada!</div>
+    <div class="results-grade" id="resultsGrade">Buen trabajo</div>
+    <div class="results-grid">
+      <div class="result-item"><div class="result-item-label">Precisión</div><div class="result-item-value big" id="finalAccuracy">0%</div></div>
+      <div class="result-item"><div class="result-item-label">Aciertos</div><div class="result-item-value" id="finalHits">0/0</div></div>
+      <div class="result-item"><div class="result-item-label">Mejor racha</div><div class="result-item-value" id="finalBestStreak">0</div></div>
+      <div class="result-item"><div class="result-item-label">Puntos</div><div class="result-item-value" id="finalPoints">0</div></div>
+    </div>
+    <div class="weak-notes">
+      <h3>🎯 Notas a reforzar</h3>
+      <p id="weakNotes">Todavía no hay suficientes datos.</p>
+    </div>
+    <div class="results-actions">
+      <button class="btn primary" id="playAgainBtn">🔄 Jugar otra vez</button>
+      <button class="btn" id="closeResultsBtn">Cerrar</button>
+    </div>
+    <div class="stats-note" id="lifetimeStats"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const NOTE_NAMES_ES = ["Do","Do#","Re","Re#","Mi","Fa","Fa#","Sol","Sol#","La","La#","Si"];
+const NATURAL_PC = new Set([0,2,4,5,7,9,11]);
+const KEYBOARD_MAP = {
+  a:36,w:37,s:38,e:39,d:40,f:41,t:42,g:43,y:44,h:45,u:46,j:47,k:48
+};
+
+const state = {
+  currentNote:null, clef:"treble", difficulty:"easy", totalRounds:20,
+  currentRound:0, attempts:0, hits:0, streak:0, bestStreak:0, points:0,
+  gameStarted:false, gamePaused:false, sessionStart:0, pausedAt:0, pausedMs:0,
+  deadline:0, timerFrame:null, nextTimeout:null, lastMidi:null, history:[],
+  noteStats:{}
+};
+
+const TIMERS = {easy:5000, medium:4000, hard:3000};
+const SVG_NS = "http://www.w3.org/2000/svg";
+const STAFF_TOP = 40, LINE_SPACING = 12, NOTE_STEP = 6, STAFF_X_START = 60, STAFF_X_END = 260;
+
+let audioCtx = null;
+
+function initAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === "suspended") audioCtx.resume();
+}
+function playTone(freq,duration=.22,type="sine",volume=.13){
+  initAudio();
+  const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+  osc.type=type; osc.frequency.value=freq;
+  gain.gain.setValueAtTime(volume,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+duration);
+  osc.connect(gain).connect(audioCtx.destination); osc.start();
+  osc.stop(audioCtx.currentTime+duration);
+}
+function midiToFreq(midi){return 440*Math.pow(2,(midi-69)/12)}
+function playCorrect(){playTone(880,.13,"sine",.12)}
+function playWrong(){playTone(180,.18,"sawtooth",.08)}
+
+function noteLabel(midi){
+  return NOTE_NAMES_ES[midi%12] + (Math.floor(midi/12)-1);
+}
+
+function diatonicIndex(midi){
+  const octave=Math.floor(midi/12)-1, pc=midi%12;
+  const map={0:0,2:1,4:2,5:3,7:4,9:5,11:6};
+  if(map[pc]!==undefined) return octave*7+map[pc];
+  const lower={1:0,3:1,6:3,8:4,10:5};
+  return octave*7+lower[pc];
+}
+function noteToY(midi){
+  const ref = state.clef==="treble" ? diatonicIndex(71) : diatonicIndex(50);
+  const steps = ref-diatonicIndex(midi);
+  return STAFF_TOP+2*LINE_SPACING+steps*NOTE_STEP;
+}
+
+function drawStaff(){
+  const svg=document.getElementById("staff"); svg.innerHTML="";
+  for(let i=0;i<5;i++){
+    const y=STAFF_TOP+i*LINE_SPACING, line=document.createElementNS(SVG_NS,"line");
+    line.setAttribute("x1",STAFF_X_START); line.setAttribute("x2",STAFF_X_END);
+    line.setAttribute("y1",y); line.setAttribute("y2",y);
+    line.setAttribute("stroke","#333"); line.setAttribute("stroke-width","1.5"); svg.appendChild(line);
+  }
+  const clef=document.createElementNS(SVG_NS,"text");
+  clef.setAttribute("x",STAFF_X_START-6);
+  clef.setAttribute("y",state.clef==="treble"?STAFF_TOP+42:STAFF_TOP+35);
+  clef.setAttribute("font-size",state.clef==="treble"?"55":"38");
+  clef.setAttribute("font-family","serif"); clef.setAttribute("fill","#333");
+  clef.textContent=state.clef==="treble"?"𝄞":"𝄢"; svg.appendChild(clef);
+}
+
+function drawNote(midi){
+  const svg=document.getElementById("staff");
+  svg.querySelectorAll(".note-el").forEach(el=>el.remove());
+  const y=noteToY(midi), x=STAFF_X_START+92;
+  const pc=midi%12, isSharp=!NATURAL_PC.has(pc);
+  const top=STAFF_TOP, bottom=STAFF_TOP+4*LINE_SPACING;
+
+  if(y<top){
+    for(let ly=top-LINE_SPACING;ly>=y;ly-=LINE_SPACING) addLedger(svg,x,ly);
+  }else if(y>bottom){
+    for(let ly=bottom+LINE_SPACING;ly<=y;ly+=LINE_SPACING) addLedger(svg,x,ly);
+  }
+  if(isSharp){
+    const sharp=document.createElementNS(SVG_NS,"text");
+    sharp.classList.add("note-el"); sharp.setAttribute("x",x-24); sharp.setAttribute("y",y+5);
+    sharp.setAttribute("font-size","22"); sharp.setAttribute("fill","#333"); sharp.textContent="♯"; svg.appendChild(sharp);
+  }
+  const head=document.createElementNS(SVG_NS,"ellipse");
+  head.classList.add("note-el"); head.setAttribute("cx",x); head.setAttribute("cy",y);
+  head.setAttribute("rx","7"); head.setAttribute("ry","5"); head.setAttribute("transform",`rotate(-20 ${x} ${y})`);
+  head.setAttribute("fill","#333"); svg.appendChild(head);
+
+  const stem=document.createElementNS(SVG_NS,"line"); stem.classList.add("note-el");
+  const up=y>STAFF_TOP+2*LINE_SPACING;
+  stem.setAttribute("x1",up?x+6.5:x-6.5); stem.setAttribute("y1",y);
+  stem.setAttribute("x2",up?x+6.5:x-6.5); stem.setAttribute("y2",up?y-35:y+35);
+  stem.setAttribute("stroke","#333"); stem.setAttribute("stroke-width","1.5"); svg.appendChild(stem);
+}
+function addLedger(svg,x,y){
+  const l=document.createElementNS(SVG_NS,"line"); l.classList.add("note-el");
+  l.setAttribute("x1",x-12);l.setAttribute("x2",x+12);l.setAttribute("y1",y);l.setAttribute("y2",y);
+  l.setAttribute("stroke","#333");l.setAttribute("stroke-width","1.5");svg.appendChild(l);
+}
+
+function buildPiano(){
+  const piano=document.getElementById("piano"); piano.innerHTML="";
+  const start=36,end=89, whites=[],blacks=[];
+  for(let m=start;m<end;m++) (NATURAL_PC.has(m%12)?whites:blacks).push(m);
+  const ww=100/whites.length;
+  whites.forEach((m,i)=>{
+    const key=document.createElement("div"); key.className="white-key"; key.dataset.midi=m;
+    key.style.left=(i*ww)+"%";key.style.width=ww+"%";
+    key.addEventListener("pointerdown",e=>{e.preventDefault();handleNoteInput(m,key)});
+    piano.appendChild(key);
+  });
+  const bw=ww*.6;
+  blacks.forEach(m=>{
+    const prev=whites.findIndex(w=>w>m)-1;
+    const key=document.createElement("div");key.className="black-key";key.dataset.midi=m;
+    key.style.left=`calc(${(prev+1)*ww}% - ${bw/2}%)`;key.style.width=bw+"%";
+    key.addEventListener("pointerdown",e=>{e.preventDefault();handleNoteInput(m,key)});
+    piano.appendChild(key);
+  });
+}
+function keyForMidi(midi){return document.querySelector(`[data-midi="${midi}"]`)}
+
+function getNotePool(){
+  if(state.clef==="treble"){
+    return {
+      easy:{min:60,max:76,sharps:false},
+      medium:{min:57,max:81,sharps:false},
+      hard:{min:57,max:88,sharps:true}
+    }[state.difficulty];
+  }
+  return {
+    easy:{min:48,max:60,sharps:false},
+    medium:{min:43,max:64,sharps:false},
+    hard:{min:36,max:67,sharps:true}
+  }[state.difficulty];
+}
+function generateMidi(){
+  const pool=getNotePool(), candidates=[];
+  for(let m=pool.min;m<=pool.max;m++){
+    if(pool.sharps || NATURAL_PC.has(m%12)) candidates.push(m);
+  }
+  let choices=candidates.filter(m=>m!==state.lastMidi);
+  if(state.difficulty==="hard"){
+    const accidentals=choices.filter(m=>!NATURAL_PC.has(m%12));
+    if(accidentals.length && Math.random()<.45) choices=accidentals;
+  }
+  return choices[Math.floor(Math.random()*choices.length)];
+}
+
+function startTimer(){
+  cancelAnimationFrame(state.timerFrame);
+  const duration=TIMERS[state.difficulty];
+  state.deadline=performance.now()+duration;
+  const tick=()=>{
+    if(!state.gameStarted || state.gamePaused){return}
+    const remaining=Math.max(0,state.deadline-performance.now());
+    document.getElementById("timerFill").style.width=(remaining/duration*100)+"%";
+    if(remaining<=0){handleTimeout();return}
+    state.timerFrame=requestAnimationFrame(tick);
+  };
+  state.timerFrame=requestAnimationFrame(tick);
+}
+function stopTimer(){
+  cancelAnimationFrame(state.timerFrame); state.timerFrame=null;
+}
+
+function generateNote(){
+  clearTimeout(state.nextTimeout); state.nextTimeout=null;
+  if(!state.gameStarted)return;
+  if(state.currentRound>=state.totalRounds){endSession();return}
+  const midi=generateMidi(); state.lastMidi=midi; state.currentNote={midi};
+  drawNote(midi); updateProgress(); startTimer();
+}
+function updateProgress(){
+  const pct=(state.currentRound/state.totalRounds)*100;
+  document.getElementById("progressFill").style.width=pct+"%";
+  document.getElementById("progressText").textContent=
+    `Nota ${Math.min(state.currentRound+1,state.totalRounds)} de ${state.totalRounds}`;
+}
+
+function registerStat(midi,correct){
+  const key=String(midi);
+  if(!state.noteStats[key])state.noteStats[key]={attempts:0,hits:0};
+  state.noteStats[key].attempts++;
+  if(correct)state.noteStats[key].hits++;
+}
+function updateHUD(){
+  document.getElementById("score").textContent=state.hits;
+  document.getElementById("streak").textContent=state.streak;
+  document.getElementById("best").textContent=state.bestStreak;
+  const acc=state.attempts?Math.round(state.hits/state.attempts*100):100;
+  document.getElementById("accuracy").textContent=acc+"%";
+  document.getElementById("points").textContent=state.points;
+}
+function pressVisual(key,wrong=false){
+  if(!key)return;
+  key.classList.add(wrong?"wrong-press":"pressed");
+  setTimeout(()=>key.classList.remove(wrong?"wrong-press":"pressed"),wrong?350:130);
+}
+
+function handleNoteInput(midi,keyElement){
+  if(state.gamePaused)return;
+  initAudio();
+  if(!state.gameStarted){startSession();return}
+  if(!state.currentNote)return;
+
+  const expected=state.currentNote.midi;
+  state.attempts++; registerStat(expected,midi===expected);
+  playTone(midiToFreq(midi),.18,"triangle",.10); pressVisual(keyElement,midi!==expected);
+
+  if(midi===expected){
+    stopTimer(); state.hits++; state.streak++;
+    state.bestStreak=Math.max(state.bestStreak,state.streak);
+    const remaining=Math.max(0,state.deadline-performance.now());
+    const speedBonus=Math.round(remaining/TIMERS[state.difficulty]*40);
+    const streakBonus=Math.min(state.streak*5,50);
+    state.points+=100+speedBonus+streakBonus;
+    document.getElementById("feedback").textContent=`✓ ¡Correcto! +${100+speedBonus+streakBonus}`;
+    document.getElementById("feedback").className="feedback correct";
+    playCorrect(); state.history.push({midi:expected,correct:true});
+    state.currentRound++;
+    updateHUD();
+    state.nextTimeout=setTimeout(generateNote,380);
+  }else{
+    state.streak=0;
+    document.getElementById("feedback").textContent=`✗ Prueba otra vez — ${noteLabel(expected)}`;
+    document.getElementById("feedback").className="feedback wrong";
+    playWrong(); state.history.push({midi:expected,correct:false});
+    updateHUD();
+  }
+}
+
+function handleTimeout(){
+  if(!state.gameStarted||state.gamePaused||!state.currentNote)return;
+  stopTimer(); state.attempts++; registerStat(state.currentNote.midi,false); state.streak=0;
+  state.history.push({midi:state.currentNote.midi,correct:false,timeout:true});
+  document.getElementById("feedback").textContent=`⏱ Tiempo — era ${noteLabel(state.currentNote.midi)}`;
+  document.getElementById("feedback").className="feedback wrong"; playWrong();
+  state.currentRound++; updateHUD();
+  state.nextTimeout=setTimeout(generateNote,700);
+}
+
+function startSession(){
+  clearTimeout(state.nextTimeout);stopTimer();
+  state.currentRound=0;state.attempts=0;state.hits=0;state.streak=0;state.bestStreak=0;
+  state.points=0;state.history=[];state.noteStats={};state.lastMidi=null;
+  state.gameStarted=true;state.gamePaused=false;state.sessionStart=performance.now();state.pausedMs=0;
+  document.getElementById("startBtn").textContent="⏵ En curso";
+  document.getElementById("startBtn").disabled=true;
+  document.getElementById("pauseBtn").disabled=false;
+  updateHUD(); generateNote();
+}
+
+function togglePause(){
+  if(!state.gameStarted)return;
+  state.gamePaused=!state.gamePaused;
+  const btn=document.getElementById("pauseBtn");
+  if(state.gamePaused){
+    state.pausedAt=performance.now();stopTimer();
+    btn.textContent="▶ Reanudar";document.getElementById("feedback").textContent="⏸ Pausado";
+    document.getElementById("feedback").className="feedback";
+  }else{
+    state.pausedMs+=performance.now()-state.pausedAt;
+    btn.textContent="⏸ Pausar";document.getElementById("feedback").textContent="¡Sigue!";
+    document.getElementById("feedback").className="feedback correct";startTimer();
+  }
+}
+
+function endSession(){
+  stopTimer(); clearTimeout(state.nextTimeout); state.currentNote=null;
+  state.gameStarted=false;state.gamePaused=false;
+  document.getElementById("startBtn").disabled=false;document.getElementById("startBtn").textContent="▶ Iniciar";
+  document.getElementById("pauseBtn").disabled=true;document.getElementById("pauseBtn").textContent="⏸ Pausar";
+  document.getElementById("timerFill").style.width="0%";
+  document.querySelectorAll(".note-el").forEach(e=>e.remove());
+  document.getElementById("progressFill").style.width="100%";
+  document.getElementById("progressText").textContent="Ronda terminada";
+  document.getElementById("feedback").textContent="Ronda completada";
+  document.getElementById("feedback").className="feedback";
+
+  const accuracy=state.attempts?Math.round(state.hits/state.attempts*100):0;
+  let emoji="📚",title="A seguir practicando",grade="La práctica hace al maestro";
+  if(accuracy>=90){emoji="🏆";title="¡Excelente!";grade="Lectura muy precisa";}
+  else if(accuracy>=75){emoji="🎉";title="¡Muy bien!";grade="Sigue consolidando las notas";}
+  else if(accuracy>=50){emoji="💪";title="Buen intento";grade="Un poco más de práctica y mejorarás";}
+
+  document.getElementById("resultsEmoji").textContent=emoji;
+  document.getElementById("resultsTitle").textContent=title;
+  document.getElementById("resultsGrade").textContent=grade;
+  document.getElementById("finalAccuracy").textContent=accuracy+"%";
+  document.getElementById("finalHits").textContent=`${state.hits}/${state.attempts}`;
+  document.getElementById("finalBestStreak").textContent=state.bestStreak;
+  document.getElementById("finalPoints").textContent=state.points;
+  document.getElementById("weakNotes").textContent=weakNotesText();
+  saveLifetime();
+  showLifetime();
+  document.getElementById("resultsOverlay").classList.add("show");
+}
+
+function weakNotesText(){
+  const rows=Object.entries(state.noteStats)
+    .filter(([,s])=>s.attempts>=1)
+    .map(([m,s])=>({m:+m,acc:s.hits/s.attempts*100,attempts:s.attempts}))
+    .sort((a,b)=>a.acc-b.acc);
+  if(!rows.length)return"Todavía no hay suficientes datos.";
+  return rows.slice(0,3).map(r=>`${noteLabel(r.m)}: ${Math.round(r.acc)}% (${r.attempts} intento${r.attempts!==1?"s":""})`).join(" · ");
+}
+
+function resetSession(){
+  clearTimeout(state.nextTimeout);
+  stopTimer();
+
+  state.gameStarted=false;
+  state.gamePaused=false;
+  state.currentNote=null;
+  state.currentRound=0;
+  state.attempts=0;
+  state.hits=0;
+  state.streak=0;
+  state.bestStreak=0;
+  state.points=0;
+  state.history=[];
+  state.noteStats={};
+  state.lastMidi=null;
+
+  localStorage.removeItem("trainer-lectura-v4");
+
+  document.getElementById("resultsOverlay").classList.remove("show");
+  document.getElementById("startBtn").disabled=false;
+  document.getElementById("startBtn").textContent="▶ Iniciar";
+  document.getElementById("pauseBtn").disabled=true;
+  document.getElementById("pauseBtn").textContent="⏸ Pausar";
+  document.getElementById("feedback").textContent="Listo para practicar";
+  document.getElementById("feedback").className="feedback";
+  document.getElementById("progressFill").style.width="0%";
+  document.getElementById("progressText").textContent="Pulsa «Iniciar» para comenzar";
+  document.getElementById("timerFill").style.width="100%";
+  document.querySelectorAll(".note-el").forEach(e=>e.remove());
+
+  updateHUD();
+  showLifetime();
+}
+
+function saveLifetime(){
+  const key="trainer-lectura-v4";
+  const old=JSON.parse(localStorage.getItem(key)||'{"sessions":0,"notes":0,"hits":0,"bestStreak":0,"points":0}');
+  old.sessions++;old.notes+=state.currentRound;old.hits+=state.hits;old.bestStreak=Math.max(old.bestStreak,state.bestStreak);old.points+=state.points;
+  localStorage.setItem(key,JSON.stringify(old));
+}
+function showLifetime(){
+  const s=JSON.parse(localStorage.getItem("trainer-lectura-v4")||"{}");
+  document.getElementById("lifetimeStats").textContent=
+    `Histórico: ${s.sessions||0} sesiones · ${s.notes||0} notas · ${s.hits||0} aciertos · mejor racha ${s.bestStreak||0}`;
+}
+
+document.querySelectorAll("[data-clef]").forEach(btn=>btn.addEventListener("click",()=>{
+  if(state.gameStarted)return;
+  document.querySelectorAll("[data-clef]").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");state.clef=btn.dataset.clef;drawStaff();
+}));
+document.querySelectorAll("[data-diff]").forEach(btn=>btn.addEventListener("click",()=>{
+  if(state.gameStarted)return;
+  document.querySelectorAll("[data-diff]").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");state.difficulty=btn.dataset.diff;
+}));
+document.querySelectorAll("[data-rounds]").forEach(btn=>btn.addEventListener("click",()=>{
+  if(state.gameStarted)return;
+  document.querySelectorAll("[data-rounds]").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");state.totalRounds=Number(btn.dataset.rounds);
+  document.getElementById("progressText").textContent=`Ronda de ${state.totalRounds} notas lista`;
+}));
+
+document.getElementById("startBtn").addEventListener("click",startSession);
+document.getElementById("pauseBtn").addEventListener("click",togglePause);
+document.getElementById("resetBtn").addEventListener("click",resetSession);
+document.getElementById("playAgainBtn").addEventListener("click",()=>{document.getElementById("resultsOverlay").classList.remove("show");startSession()});
+document.getElementById("closeResultsBtn").addEventListener("click",()=>document.getElementById("resultsOverlay").classList.remove("show"));
+
+document.addEventListener("keydown",e=>{
+  if(e.repeat)return;
+  const key=e.key.toLowerCase();
+  if(key===" "){e.preventDefault(); if(state.gameStarted)togglePause(); else startSession(); return}
+  const midi=KEYBOARD_MAP[key];
+  if(midi===undefined)return;
+  e.preventDefault();
+  const el=keyForMidi(midi);
+  handleNoteInput(midi,el);
+});
+
+drawStaff();buildPiano();updateHUD();
+</script>
+</body>
+</html>

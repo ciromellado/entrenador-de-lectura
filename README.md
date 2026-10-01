@@ -1,4 +1,4 @@
-<img width="956" height="607" alt="entrenador-de-lectura" src="https://github.com/user-attachments/assets/0e608940-bfdf-4079-ac9f-3b4bd20a6c89" />
+<img width="799" height="605" alt="portal" src="https://github.com/user-attachments/assets/02aa1f82-3f55-4409-bf2a-ea54106e0de6" />
 
 # 🎹 Entrenador de Lectura a Primera Vista (Sight Reading Trainer)
 

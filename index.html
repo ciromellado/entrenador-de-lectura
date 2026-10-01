@@ -121,7 +121,7 @@ kbd{background:rgba(0,0,0,.28);padding:2px 5px;border-radius:4px;font-family:inh
   <div class="stat"><div class="stat-label">Racha</div><div class="stat-value" id="streak">0</div></div>
   <div class="stat"><div class="stat-label">Mejor racha</div><div class="stat-value" id="best">0</div></div>
   <div class="stat"><div class="stat-label">Precisión</div><div class="stat-value" id="accuracy">100%</div></div>
-  <div class="stat"><div class="stat-label">Puntos</div><div class="stat-value" id="points">0</div></div>
+  <div class="stat"><div class="stat-label">Tiempo</div><div class="stat-value" id="points">0s</div></div>
 </div>
 
 <div class="bar progress-bar"><div class="progress-fill" id="progressFill"></div></div>
@@ -165,7 +165,7 @@ kbd{background:rgba(0,0,0,.28);padding:2px 5px;border-radius:4px;font-family:inh
       <div class="result-item"><div class="result-item-label">Precisión</div><div class="result-item-value big" id="finalAccuracy">0%</div></div>
       <div class="result-item"><div class="result-item-label">Aciertos</div><div class="result-item-value" id="finalHits">0/0</div></div>
       <div class="result-item"><div class="result-item-label">Mejor racha</div><div class="result-item-value" id="finalBestStreak">0</div></div>
-      <div class="result-item"><div class="result-item-label">Puntos</div><div class="result-item-value" id="finalPoints">0</div></div>
+      <div class="result-item"><div class="result-item-label">Tiempo total</div><div class="result-item-value" id="finalPoints">0s</div></div>
     </div>
     <div class="weak-notes">
       <h3>🎯 Notas a reforzar</h3>
@@ -190,7 +190,7 @@ const KEYBOARD_MAP = {
 
 const state = {
   currentNote:null, clef:"treble", difficulty:"easy", totalRounds:20,
-  currentRound:0, attempts:0, hits:0, streak:0, bestStreak:0, points:0,
+  currentRound:0, attempts:0, hits:0, streak:0, bestStreak:0, totalSeconds:0,
   gameStarted:false, gamePaused:false, sessionStart:0, pausedAt:0, pausedMs:0,
   deadline:0, timerFrame:null, nextTimeout:null, lastMidi:null, history:[],
   noteStats:{}
@@ -203,9 +203,65 @@ const STAFF_TOP = 40, LINE_SPACING = 12, NOTE_STEP = 6, STAFF_X_START = 60, STAF
 let audioCtx = null;
 
 function initAudio(){
-  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    loadPiano();
+  }
   if(audioCtx.state === "suspended") audioCtx.resume();
 }
+
+/* ---------- Piano real (muestras Salamander) ---------- */
+const SAMPLE_BASE = "https://tonejs.github.io/audio/salamander/";
+const pianoSamples = [];   // {midi, buffer}
+let pianoLoading = false;
+
+async function loadPiano(){
+  if(pianoLoading) return;
+  pianoLoading = true;
+  const defs = [];
+  for(let oct = 2; oct <= 6; oct++){
+    [[0,"C"],[3,"Ds"],[6,"Fs"],[9,"A"]].forEach(([pc,name])=>{
+      defs.push({midi:(oct+1)*12+pc, file:name+oct+".mp3"});
+    });
+  }
+  await Promise.all(defs.map(async d=>{
+    try{
+      const res = await fetch(SAMPLE_BASE + d.file);
+      const data = await res.arrayBuffer();
+      const buffer = await audioCtx.decodeAudioData(data);
+      pianoSamples.push({midi:d.midi, buffer});
+    }catch(err){
+      console.warn("No se pudo cargar", d.file, err);
+    }
+  }));
+}
+
+function playPiano(midi, volume = .9){
+  initAudio();
+  if(!pianoSamples.length){
+    playTone(midiToFreq(midi), .4, "triangle", .10);
+    return;
+  }
+  let best = pianoSamples[0];
+  for(const s of pianoSamples){
+    if(Math.abs(s.midi - midi) < Math.abs(best.midi - midi)) best = s;
+  }
+  const now = audioCtx.currentTime;
+  const src = audioCtx.createBufferSource();
+  src.buffer = best.buffer;
+  src.playbackRate.value = Math.pow(2, (midi - best.midi) / 12);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(volume, now);
+  gain.gain.setValueAtTime(volume, now + 1.2);
+  gain.gain.exponentialRampToValueAtTime(.001, now + 2.5);
+
+  src.connect(gain).connect(audioCtx.destination);
+  src.start(now);
+  src.stop(now + 2.6);
+}
+
+/* ---------- Sonidos sintéticos ---------- */
 function playTone(freq,duration=.22,type="sine",volume=.13){
   initAudio();
   const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
@@ -216,8 +272,8 @@ function playTone(freq,duration=.22,type="sine",volume=.13){
   osc.stop(audioCtx.currentTime+duration);
 }
 function midiToFreq(midi){return 440*Math.pow(2,(midi-69)/12)}
-function playCorrect(){playTone(880,.13,"sine",.12)}
-function playWrong(){playTone(180,.18,"sawtooth",.08)}
+function playCorrect(){}
+function playWrong(){playTone(180,.18,"sawtooth",.05)}
 
 function noteLabel(midi){
   return NOTE_NAMES_ES[midi%12] + (Math.floor(midi/12)-1);
@@ -341,6 +397,11 @@ function startTimer(){
   state.deadline=performance.now()+duration;
   const tick=()=>{
     if(!state.gameStarted || state.gamePaused){return}
+    
+    // Actualizar el tiempo transcurrido en tiempo real en el HUD
+    const elapsedSeconds = Math.floor((performance.now() - state.sessionStart - state.pausedMs) / 1000);
+    document.getElementById("points").textContent = elapsedSeconds + "s";
+
     const remaining=Math.max(0,state.deadline-performance.now());
     document.getElementById("timerFill").style.width=(remaining/duration*100)+"%";
     if(remaining<=0){handleTimeout();return}
@@ -378,7 +439,6 @@ function updateHUD(){
   document.getElementById("best").textContent=state.bestStreak;
   const acc=state.attempts?Math.round(state.hits/state.attempts*100):100;
   document.getElementById("accuracy").textContent=acc+"%";
-  document.getElementById("points").textContent=state.points;
 }
 function pressVisual(key,wrong=false){
   if(!key)return;
@@ -394,16 +454,13 @@ function handleNoteInput(midi,keyElement){
 
   const expected=state.currentNote.midi;
   state.attempts++; registerStat(expected,midi===expected);
-  playTone(midiToFreq(midi),.18,"triangle",.10); pressVisual(keyElement,midi!==expected);
+   playPiano(midi); pressVisual(keyElement,midi!==expected);
 
   if(midi===expected){
     stopTimer(); state.hits++; state.streak++;
     state.bestStreak=Math.max(state.bestStreak,state.streak);
-    const remaining=Math.max(0,state.deadline-performance.now());
-    const speedBonus=Math.round(remaining/TIMERS[state.difficulty]*40);
-    const streakBonus=Math.min(state.streak*5,50);
-    state.points+=100+speedBonus+streakBonus;
-    document.getElementById("feedback").textContent=`✓ ¡Correcto! +${100+speedBonus+streakBonus}`;
+    
+    document.getElementById("feedback").textContent=`✓ ¡Correcto!`;
     document.getElementById("feedback").className="feedback correct";
     playCorrect(); state.history.push({midi:expected,correct:true});
     state.currentRound++;
@@ -431,7 +488,7 @@ function handleTimeout(){
 function startSession(){
   clearTimeout(state.nextTimeout);stopTimer();
   state.currentRound=0;state.attempts=0;state.hits=0;state.streak=0;state.bestStreak=0;
-  state.points=0;state.history=[];state.noteStats={};state.lastMidi=null;
+  state.totalSeconds=0;state.history=[];state.noteStats={};state.lastMidi=null;
   state.gameStarted=true;state.gamePaused=false;state.sessionStart=performance.now();state.pausedMs=0;
   document.getElementById("startBtn").textContent="⏵ En curso";
   document.getElementById("startBtn").disabled=true;
@@ -457,6 +514,10 @@ function togglePause(){
 function endSession(){
   stopTimer(); clearTimeout(state.nextTimeout); state.currentNote=null;
   state.gameStarted=false;state.gamePaused=false;
+  
+  // Calcular el tiempo total transcurrido en segundos
+  state.totalSeconds = Math.round((performance.now() - state.sessionStart - state.pausedMs) / 1000);
+
   document.getElementById("startBtn").disabled=false;document.getElementById("startBtn").textContent="▶ Iniciar";
   document.getElementById("pauseBtn").disabled=true;document.getElementById("pauseBtn").textContent="⏸ Pausar";
   document.getElementById("timerFill").style.width="0%";
@@ -478,7 +539,7 @@ function endSession(){
   document.getElementById("finalAccuracy").textContent=accuracy+"%";
   document.getElementById("finalHits").textContent=`${state.hits}/${state.attempts}`;
   document.getElementById("finalBestStreak").textContent=state.bestStreak;
-  document.getElementById("finalPoints").textContent=state.points;
+  document.getElementById("finalPoints").textContent=state.totalSeconds + "s";
   document.getElementById("weakNotes").textContent=weakNotesText();
   saveLifetime();
   showLifetime();
@@ -506,7 +567,7 @@ function resetSession(){
   state.hits=0;
   state.streak=0;
   state.bestStreak=0;
-  state.points=0;
+  state.totalSeconds=0;
   state.history=[];
   state.noteStats={};
   state.lastMidi=null;
@@ -525,14 +586,17 @@ function resetSession(){
   document.getElementById("timerFill").style.width="100%";
   document.querySelectorAll(".note-el").forEach(e=>e.remove());
 
+  document.getElementById("points").textContent = "0s";
   updateHUD();
   showLifetime();
 }
 
 function saveLifetime(){
   const key="trainer-lectura-v4";
-  const old=JSON.parse(localStorage.getItem(key)||'{"sessions":0,"notes":0,"hits":0,"bestStreak":0,"points":0}');
-  old.sessions++;old.notes+=state.currentRound;old.hits+=state.hits;old.bestStreak=Math.max(old.bestStreak,state.bestStreak);old.points+=state.points;
+  const old=JSON.parse(localStorage.getItem(key)||'{"sessions":0,"notes":0,"hits":0,"bestStreak":0,"totalSeconds":0}');
+  old.sessions++; old.notes+=state.currentRound; old.hits+=state.hits; 
+  old.bestStreak=Math.max(old.bestStreak,state.bestStreak); 
+  old.totalSeconds=(old.totalSeconds || 0) + state.totalSeconds;
   localStorage.setItem(key,JSON.stringify(old));
 }
 function showLifetime(){

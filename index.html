@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Entrenador de Lectura a Primera Vista — v5</title>
+<title>Entrenador de Lectura a Primera Vista — v6 (MIDI)</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -17,7 +17,13 @@ body{
   align-items:center
 }
 h1{margin-bottom:6px;font-size:clamp(1.5rem,4vw,2rem);text-align:center}
-.subtitle{text-align:center;opacity:.82;margin-bottom:18px;font-size:.92rem}
+.subtitle{text-align:center;opacity:.82;margin-bottom:14px;font-size:.92rem}
+.midi-status{
+  background:rgba(0,0,0,0.3);padding:6px 14px;border-radius:20px;font-size:0.8rem;
+  margin-bottom:14px;display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,0.15);
+}
+.midi-dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.midi-dot.connected{background:var(--green)}
 .hud{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;justify-content:center}
 .stat{
   background:rgba(255,255,255,.14);padding:9px 15px;border-radius:12px;
@@ -116,6 +122,12 @@ kbd{background:rgba(0,0,0,.28);padding:2px 5px;border-radius:4px;font-family:inh
 <h1>🎹 Entrenador de Lectura</h1>
 <p class="subtitle">Lee la nota del pentagrama y tócala en el piano</p>
 
+<!-- Indicador de conexión MIDI USB -->
+<div class="midi-status" id="midiStatus">
+  <div class="midi-dot" id="midiDot"></div>
+  <span id="midiText">Buscando piano MIDI USB...</span>
+</div>
+
 <div class="hud">
   <div class="stat"><div class="stat-label">Aciertos</div><div class="stat-value" id="score">0</div></div>
   <div class="stat"><div class="stat-label">Racha</div><div class="stat-value" id="streak">0</div></div>
@@ -147,13 +159,11 @@ kbd{background:rgba(0,0,0,.28);padding:2px 5px;border-radius:4px;font-family:inh
   <button class="btn primary" id="startBtn">▶ Iniciar</button>
   <button class="btn pause" id="pauseBtn" disabled>⏸ Pausar</button>
   <button class="btn" id="resetBtn">↺ Reiniciar</button>
-  <!-- Botón de donación conectado a tu PayPal -->
   <a class="btn donate" href="https://paypal.me/Donacion472" target="_blank" rel="noopener noreferrer">☕ Donar con PayPal</a>
 </div>
 <p>Si te gusta el entrenador, estaré agradecido por tu donación.</p>
 <p class="hint">
-  Ratón/táctil o teclado: <kbd>A W S E D F T G Y H U J K</kbd>.
-  Las teclas negras usan W/E/T/Y/U. El programa evita repetir la misma nota consecutivamente.
+  Puedes tocar con tu piano USB, con el ratón/táctil o con el teclado del ordenador: <kbd>A W S E D F T G Y H U J K</kbd>.
 </p>
 
 <div class="results-overlay" id="resultsOverlay">
@@ -210,9 +220,55 @@ function initAudio(){
   if(audioCtx.state === "suspended") audioCtx.resume();
 }
 
+/* ---------- Conexión Web MIDI USB ---------- */
+function initMidi() {
+  const midiDot = document.getElementById("midiDot");
+  const midiText = document.getElementById("midiText");
+
+  if (!navigator.requestMIDIAccess) {
+    midiText.textContent = "Tu navegador no soporta Web MIDI";
+    return;
+  }
+
+  navigator.requestMIDIAccess().then(onMidiSuccess, onMidiFailure);
+
+  function onMidiSuccess(midiAccess) {
+    updateMidiDevices(midiAccess);
+    midiAccess.onstatechange = (e) => updateMidiDevices(midiAccess);
+  }
+
+  function onMidiFailure() {
+    midiDot.classList.remove("connected");
+    midiText.textContent = "No se pudo acceder a los puertos MIDI";
+  }
+
+  function updateMidiDevices(midiAccess) {
+    let inputs = Array.from(midiAccess.inputs.values());
+    if (inputs.length > 0) {
+      midiDot.classList.add("connected");
+      midiText.textContent = `Piano MIDI conectado (${inputs[0].name})`;
+      inputs.forEach(input => {
+        input.onmidimessage = handleMidiMessage;
+      });
+    } else {
+      midiDot.classList.remove("connected");
+      midiText.textContent = "Conecta un piano por USB";
+    }
+  }
+}
+
+function handleMidiMessage(event) {
+  const [command, note, velocity] = event.data;
+  // command 144 es Note On (con velocity > 0)
+  if (command === 144 && velocity > 0) {
+    const keyEl = keyForMidi(note);
+    handleNoteInput(note, keyEl);
+  }
+}
+
 /* ---------- Piano real (muestras Salamander) ---------- */
 const SAMPLE_BASE = "https://tonejs.github.io/audio/salamander/";
-const pianoSamples = [];   // {midi, buffer}
+const pianoSamples = [];
 let pianoLoading = false;
 
 async function loadPiano(){
@@ -398,7 +454,6 @@ function startTimer(){
   const tick=()=>{
     if(!state.gameStarted || state.gamePaused){return}
     
-    // Actualizar el tiempo transcurrido en tiempo real en el HUD
     const elapsedSeconds = Math.floor((performance.now() - state.sessionStart - state.pausedMs) / 1000);
     document.getElementById("points").textContent = elapsedSeconds + "s";
 
@@ -454,7 +509,7 @@ function handleNoteInput(midi,keyElement){
 
   const expected=state.currentNote.midi;
   state.attempts++; registerStat(expected,midi===expected);
-   playPiano(midi); pressVisual(keyElement,midi!==expected);
+  playPiano(midi); pressVisual(keyElement,midi!==expected);
 
   if(midi===expected){
     stopTimer(); state.hits++; state.streak++;
@@ -515,7 +570,6 @@ function endSession(){
   stopTimer(); clearTimeout(state.nextTimeout); state.currentNote=null;
   state.gameStarted=false;state.gamePaused=false;
   
-  // Calcular el tiempo total transcurrido en segundos
   state.totalSeconds = Math.round((performance.now() - state.sessionStart - state.pausedMs) / 1000);
 
   document.getElementById("startBtn").disabled=false;document.getElementById("startBtn").textContent="▶ Iniciar";
@@ -639,7 +693,7 @@ document.addEventListener("keydown",e=>{
   handleNoteInput(midi,el);
 });
 
-drawStaff();buildPiano();updateHUD();
+drawStaff(); buildPiano(); updateHUD(); initMidi();
 </script>
 </body>
 </html>

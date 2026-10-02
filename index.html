@@ -403,9 +403,22 @@ function buildPiano(){
   const start=36,end=89, whites=[],blacks=[];
   for(let m=start;m<end;m++) (NATURAL_PC.has(m%12)?whites:blacks).push(m);
   const ww=100/whites.length;
+  
+  // Nota clave a identificar según el modo activo (C4 para treble, F3 para bass)
+  const targetMidi = state.clef === "treble" ? 60 : 53;
+
   whites.forEach((m,i)=>{
     const key=document.createElement("div"); key.className="white-key"; key.dataset.midi=m;
     key.style.left=(i*ww)+"%";key.style.width=ww+"%";
+    
+    // Mostrar la etiqueta correspondiente en la tecla adecuada
+    // Mostrar la etiqueta correspondiente en la tecla adecuada
+    if(m === targetMidi){
+      key.textContent = state.clef === "treble" ? "C4" : "F3";
+      key.style.color = "#000"; // <--- Cambiado a negro
+      key.style.fontWeight = "800";
+    }
+
     key.addEventListener("pointerdown",e=>{e.preventDefault();handleNoteInput(m,key)});
     piano.appendChild(key);
   });
@@ -663,6 +676,7 @@ document.querySelectorAll("[data-clef]").forEach(btn=>btn.addEventListener("clic
   if(state.gameStarted)return;
   document.querySelectorAll("[data-clef]").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active");state.clef=btn.dataset.clef;drawStaff();
+  buildPiano(); // Reconstruye el piano para actualizar la etiqueta al cambiar de clave
 }));
 document.querySelectorAll("[data-diff]").forEach(btn=>btn.addEventListener("click",()=>{
   if(state.gameStarted)return;
